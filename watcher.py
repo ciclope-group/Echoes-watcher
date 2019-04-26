@@ -16,12 +16,13 @@ import configparser
 
 from datetime import datetime
 
+# pip install paho-mqtt --user
+import paho.mqtt.client as mqtt
+
 # pip install watchdog --user
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 
-# pip install paho-mqtt --user
-import paho.mqtt.client as mqtt
 
 import logging
 import logging.handlers as handlers
@@ -65,8 +66,6 @@ class Watcher:
         self.observer.start()
         try:
             while True:
-                # sys.stdout.write("Waiting Event...\r")
-                # sys.stdout.flush()
                 time.sleep(2)
         except Exception as e:
             self.observer.stop()
@@ -83,11 +82,16 @@ class Handler(FileSystemEventHandler):
             return None
 
         elif event.event_type == 'created':
-            historicalSize = -1
-            while (historicalSize != os.path.getsize(event.src_path)):
-                historicalSize = os.path.getsize(event.src_path)
-                time.sleep(0.1)
-            # sendMQTTMessage(Event.extractEvent(event.src_path))
+
+            try:
+                historicalSize = -1
+                while (historicalSize != os.path.getsize(event.src_path)):
+                    historicalSize = os.path.getsize(event.src_path)
+                    time.sleep(0.1)
+            except Exception as e:
+                logger.error(e)
+                return None
+
             download_thread = threading.Thread(target=sendMQTTMessage, args=(Event.extractEvent(event.src_path),))
             download_thread.start()
 
@@ -135,11 +139,10 @@ class EventParser():
             return t, s_n
 
     def __convert2Json(self, t, s_n):
-        # ,'time':datetime.utcnow().isoformat()}
         return {"t": t, "s_n": s_n, "peak_lower": self.peak_lower}
 
     def extractEvent(self, file_path):
-        if not file_path or not file_path.endswith(".dat"):
+        if not file_path or not file_path.endswith(".dat") or not os.path.isfile(file_path):
             return None
 
         try:
@@ -164,8 +167,6 @@ def sendMQTTMessage(data):
     mqtt_client = mqtt.Client()
     try:
         mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        # mqtt_client.loop_forever()
-        # mqtt_client.on_message = on_message
         mqtt_client.loop_start()
         mqtt_client.publish(MQTT_TOPIC, json.dumps(data))
         mqtt_client.loop_stop()
@@ -183,8 +184,6 @@ def sendMQTTRegister():
     mqtt_client = mqtt.Client()
     try:
         mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        # mqtt_client.loop_forever()
-        # mqtt_client.on_message = on_message
         mqtt_client.loop_start()
         mqtt_client.publish(MQTT_TOPIC_REGISTER, STATIONNAME)
         mqtt_client.loop_stop()
@@ -201,8 +200,6 @@ def sendMQTTFinish():
     mqtt_client = mqtt.Client()
     try:
         mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        # mqtt_client.loop_forever()
-        # mqtt_client.on_message = on_message
         mqtt_client.loop_start()
         mqtt_client.publish(MQTT_TOPIC_FINISH, STATIONNAME)
         mqtt_client.loop_stop()
@@ -229,9 +226,7 @@ def on_server_status_message(client, userdata, message):
 
 def filter_nonprintable(text):
     import string
-    # Get the difference of all ASCII characters from the set of printable characters
     nonprintable = set([chr(i) for i in range(128)]).difference(string.printable)
-    # Use translate to remove all non-printable characters
     return text.translate({ord(character): None for character in nonprintable})
 
 
@@ -251,8 +246,8 @@ if __name__ == '__main__':
     if isRunning():
         print("Previous Script running. Please kill previous process and execute newly.")
         sys.exit()
-    # Read arguments
 
+    # Read arguments
     if len(sys.argv) > 1:
         ECHOES_CONFIG_FILE = os.path.expanduser(os.path.expandvars(sys.argv[1]))
 
@@ -287,7 +282,6 @@ if __name__ == '__main__':
         exit()
 
     MQTT_TOPIC = MQTT_TOPIC % (STATIONNAME)
-    # mqtt_client.subscribe(MQTT_TOPIC)
 
     print("")
     print("Configuration File:   %s " % (ECHOES_CONFIG_FILE))
@@ -303,9 +297,6 @@ if __name__ == '__main__':
     print(" %s [path_to_echoes_config.rts [path_to_echoes_working_directory]]" % sys.argv[0])
     print("")
 
-    # time.sleep(15)
-    # listen2server_thread = threading.Thread(target=listen2server)
-    # listen2server_thread.start()
     listen2server()
     sendMQTTRegister()
 
