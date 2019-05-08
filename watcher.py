@@ -44,7 +44,7 @@ MQTT_HOST = 'vps190.cesvima.upm.es'
 MQTT_PORT = '1883'
 MQTT_TOPIC = "station/echoes/event/%s"
 MQTT_TOPIC_REGISTER = "station/echoes/register"
-MQTT_TOPIC_FINISH = "station/echoes/finish"
+# MQTT_TOPIC_FINISH = "station/echoes/finish"
 MQTT_TOPIC_SERVER_UP = "server/status/up"
 
 STATIONNAME = "None"
@@ -138,8 +138,21 @@ class EventParser():
 
             return t, s_n
 
-    def __convert2Json(self, t, s_n):
-        return {"t": t, "s_n": s_n, "peak_lower": self.peak_lower}
+    def __convert2Json(self, t, s_n, event_id):
+        return {"t": t, "s_n": s_n, "peak_lower": self.peak_lower, "event_id": event_id}
+
+    def __getEventID(self, fname):
+        try:
+            mystring = os.path.basename(fname).split(".")[0]
+            start = mystring.find('(')
+            end = mystring.find(')')
+            if start != -1 and end != -1:
+                mystring = mystring[:start + 1] + mystring[end:]
+
+            return (filter(str.isdigit, mystring))[-13:]
+        except Exception as e:
+            logger.error(e)
+            return datetime.now().strftime("%Y%m%d%H%M?")
 
     def extractEvent(self, file_path):
         if not file_path or not file_path.endswith(".dat") or not os.path.isfile(file_path):
@@ -152,7 +165,7 @@ class EventParser():
                 return None
 
             self.last_time = t[-1]
-            return self.__convert2Json(t, s_n)
+            return self.__convert2Json(t, s_n, self.__getEventID(file_path))
         except Exception as e:
             logger.error(e)
             return None
@@ -192,21 +205,21 @@ def sendMQTTRegister():
         logger.error("Warning!!! MQTT error: %s" % (e))
 
 
-def sendMQTTFinish():
-    if not STATIONNAME or STATIONNAME == "None":
-        logger.warning("No station name")
-        return
-
-    mqtt_client = mqtt.Client()
-    try:
-        mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
-        mqtt_client.loop_start()
-        mqtt_client.publish(MQTT_TOPIC_FINISH, STATIONNAME)
-        mqtt_client.loop_stop()
-
-    except Exception as e:
-        logger.error("Warning!!! MQTT error: %s" % (e))
-
+# def sendMQTTFinish():
+#     if not STATIONNAME or STATIONNAME == "None":
+#         logger.warning("No station name")
+#         return
+#
+#     mqtt_client = mqtt.Client()
+#     try:
+#         mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
+#         mqtt_client.loop_start()
+#         mqtt_client.publish(MQTT_TOPIC_FINISH, STATIONNAME)
+#         mqtt_client.loop_stop()
+#
+#     except Exception as e:
+#         logger.error("Warning!!! MQTT error: %s" % (e))
+#
 
 def listen2server():
     mqtt_client = mqtt.Client()
@@ -215,6 +228,7 @@ def listen2server():
         mqtt_client.on_message = on_server_status_message
         mqtt_client.subscribe(MQTT_TOPIC_SERVER_UP)
         mqtt_client.loop_start()
+        # mqtt_client.loop_forever()
     except Exception as e:
         logger.error("Warning!!! MQTT error: %s" % (e))
 
@@ -222,6 +236,7 @@ def listen2server():
 def on_server_status_message(client, userdata, message):
     if bool(message.payload):
         sendMQTTRegister()
+        # listen2server()
 
 
 def filter_nonprintable(text):
