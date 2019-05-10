@@ -6,6 +6,7 @@ import os
 import sys
 import time
 import json
+# import time
 
 # pip install psutil --user
 import psutil
@@ -46,6 +47,7 @@ MQTT_TOPIC = "station/echoes/event/%s"
 MQTT_TOPIC_REGISTER = "station/echoes/register"
 # MQTT_TOPIC_FINISH = "station/echoes/finish"
 MQTT_TOPIC_SERVER_UP = "server/status/up"
+MQTT_TOPIC_GRAFANA = "station/grafana/event"
 
 STATIONNAME = "None"
 
@@ -184,8 +186,28 @@ def sendMQTTMessage(data):
         mqtt_client.publish(MQTT_TOPIC, json.dumps(data))
         mqtt_client.loop_stop()
 
+        sendMQTTGrafana(data)
+
     except Exception as e:
         logger.error("Warning!!! MQTT error: %s" % (e))
+
+
+def sendMQTTGrafana(data):
+    if 't' in data and 's_n' in data and 'event_id' in data:
+        mqtt_client = mqtt.Client()
+        mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
+        mqtt_client.loop_start()
+        for idx, t in enumerate(data['t']):
+            mqtt_client.publish(MQTT_TOPIC_GRAFANA, json.dumps({
+                # 'time': time.mktime(datetime.fromtimestamp(float(data['t'][idx])).timetuple()),
+                'time': data['t'][idx],
+                's_n': data['s_n'][idx],
+                'name': STATIONNAME,
+                # 'peak_lower':  data['peak_lower'],
+                'event': data['event_id'],
+                'type': "unknown"
+            }))
+        mqtt_client.loop_stop()
 
 
 def sendMQTTRegister():
